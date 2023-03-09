@@ -1,8 +1,7 @@
 viscoelastic-glines
 
-This is essentially a fork of agstub/grounding-line-methods with the subglacial
-lake model removed and a large-deformation (upper-convected) Maxwell model 
-implemented for the marine ice sheet problem (Glen's law viscosity).
+This is nonlinear Stokes model for ice-shelf flow driven by melting or freezing at the (sub-shelf) ice-water interface.
 
-See notes.ipynb for a short description of the problem, and the weak forms in the finite
-element implementation.
+The finite element method is implemented in FEniCSx (https://fenicsproject.org).
+
+The code can be run from the source directory (run main.py), e.g., via a Docker container
