@@ -27,6 +27,6 @@ Nx = int(L/250)                    # Number of elements in x direction
 Nz = int(H/250)                    # Number of elements in z direction
 
 # Time-stepping parameters
-t_f = 10*t_r                      # Final time (in terms of relaxation timescale)
-nt = 100*int(t_f/t_r)              # Number of time steps
+t_f = 100*t_r                      # Final time (in terms of relaxation timescale)
+nt = 10*int(t_f/t_r)               # Number of time steps
 dt = t_f/nt                        # Timestep size

@@ -1,9 +1,8 @@
-#------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------
 # These functions are used to:
-# (1) update the mesh at each timestep by solving the
-#     surface kinematic equations, AND...
-# (2) compute the grounding line positions.
-#------------------------------------------------------------------------------
+# (1) move the mesh at each timestep according the solution and forcings (move_mesh), 
+# (2) retrieve numpy arrays of the upper and lower surface elevations (get_surfaces)
+#-------------------------------------------------------------------------------------
 
 import numpy as np
 from bdry_conds import TopBoundary, WaterBoundary
@@ -16,9 +15,9 @@ from ufl import (Dx, SpatialCoordinate, TestFunction, TrialFunction, dx, grad,
                  inner)
 
 
-# ------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-def move_mesh(w,smb,domain):
+# ------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------
+def move_mesh(w,domain,t,smb_h,smb_s):
     # this function computes the surface displacements and moves the mesh
     # by solving Laplace's equation for a smooth displacement function
     # defined for all mesh vertices
@@ -26,20 +25,22 @@ def move_mesh(w,smb,domain):
     V = FunctionSpace(domain, ("CG", 1))
     x = SpatialCoordinate(domain)
 
-
     # displacement at upper and lower boundaries
-    disp_ex = w.sub(0).sub(1) - w.sub(0).sub(0)*Dx(x[1],0)+smb(x[0],x[1])
+    disp_h = w.sub(0).sub(1) - w.sub(0).sub(0)*Dx(x[1],0)+smb_h(x[0],t)
+    disp_s = w.sub(0).sub(1) - w.sub(0).sub(0)*Dx(x[1],0)+smb_s(x[0],t)
 
-    disp_bdry = Function(V)
+    disp_h_fcn = Function(V)
+    disp_s_fcn = Function(V)
     
-    disp_bdry.interpolate(Expression(disp_ex, V.element.interpolation_points()))
+    disp_h_fcn.interpolate(Expression(disp_h, V.element.interpolation_points()))
+    disp_s_fcn.interpolate(Expression(disp_s, V.element.interpolation_points()))
 
     dofs_1 = locate_dofs_geometrical(V, WaterBoundary)
     dofs_2 = locate_dofs_geometrical(V, TopBoundary)
 
     # # define displacement boundary conditions on upper and lower surfaces
-    bc1 = dirichletbc(disp_bdry, dofs_1)
-    bc2 = dirichletbc(disp_bdry, dofs_2)
+    bc1 = dirichletbc(disp_s_fcn, dofs_1)
+    bc2 = dirichletbc(disp_h_fcn, dofs_2)
 
     bcs = [bc1,bc2]
 
@@ -56,24 +57,21 @@ def move_mesh(w,smb,domain):
 
     disp_vv = disp.x.array
 
-    M = domain.geometry.x
+    X = domain.geometry.x
 
-    M[:,1] += dt*disp_vv
+    X[:,1] += dt*disp_vv
 
     return domain
 
 
 def get_surfaces(domain):
-
-    M = domain.geometry.x
-
-    N = np.size(M[:,0])
-
-    x = np.sort(M[:,0])
-    z = M[:,1][np.argsort(M[:,0])]
-    x_u = np.unique(M[:,0])
-    h = np.zeros(x_u.size)
-    s = np.zeros(x_u.size)
+# retrieve numpy arrays of the upper and lower surface elevations
+    X = domain.geometry.x
+    x = np.sort(X[:,0])
+    z = X[:,1][np.argsort(X[:,0])]
+    x_u = np.unique(X[:,0])
+    h = np.zeros(x_u.size)      # upper surface elevation
+    s = np.zeros(x_u.size)      # lower surface elevation
 
     for i in range(h.size):
         h[i] = np.max(z[np.where(np.isclose(x_u[i],x))])
