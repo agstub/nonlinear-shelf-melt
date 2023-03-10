@@ -1,11 +1,17 @@
-# This file contains the functions needed for solving the upper-convected Maxwell problem.
-from params import H,B,rho_i,rm2,g,rho_w,eps_v,sea_level,dt
-from bdry_conds import mark_boundary,LeftBoundary,RightBoundary,TopBoundary
-import numpy as np
-from petsc4py import PETSc
+# This file contains the functions needed for solving the nonlinear Stokes problem.
+from bdry_conds import LeftBoundary, RightBoundary, mark_boundary
+from dolfinx.fem import (Constant, Function, FunctionSpace, dirichletbc,
+                         locate_dofs_topological)
+from dolfinx.fem.petsc import NonlinearProblem
+from dolfinx.log import LogLevel, set_log_level
+from dolfinx.mesh import locate_entities_boundary
+from dolfinx.nls.petsc import NewtonSolver
 from mpi4py import MPI
-from dolfinx import *
-from ufl import *
+from params import B, dt, eps_v, g, rho_i, rho_w, rm2, sea_level
+from petsc4py import PETSc
+from ufl import (FacetNormal, FiniteElement, Measure, MixedElement,
+                 SpatialCoordinate, TestFunctions, div, dx, grad, inner, split,
+                 sym)
 
 
 def eta(u):
@@ -23,13 +29,13 @@ def stokes_solve(domain):
         # Stokes solver for the ice-shelf problem using Taylor-Hood elements
 
         # Define function spaces
-        P1 = FiniteElement('P',triangle,1)     # Pressure p
-        P2 = FiniteElement('P',triangle,2)     # Velocity u
+        P1 = FiniteElement('P',domain.ufl_cell(),1)     # Pressure p
+        P2 = FiniteElement('P',domain.ufl_cell(),2)     # Velocity u
         element = MixedElement([[P2,P2],P1])
-        W = fem.FunctionSpace(domain,element)  # Function space for (u,p)
+        W = FunctionSpace(domain,element)  # Function space for (u,p)
 
         #---------------------Define variational problem------------------------
-        w = fem.Function(W)
+        w = Function(W)
         (u,p) = split(w)
         (v,q) = TestFunctions(W)
       
@@ -39,7 +45,7 @@ def stokes_solve(domain):
         g_base = 0.5*(g_0+abs(g_0))
 
         # Body force
-        f = fem.Constant(domain,PETSc.ScalarType((0,-rho_i*g)))      
+        f = Constant(domain,PETSc.ScalarType((0,-rho_i*g)))      
 
         # Outward-pointing unit normal to the boundary  
         nu = FacetNormal(domain)           
@@ -49,22 +55,22 @@ def stokes_solve(domain):
         ds = Measure('ds', domain=domain, subdomain_data=facet_tag)
 
         # Define boundary conditions on the inflow/outflow boundary
-        facets_1 = mesh.locate_entities_boundary(domain, domain.topology.dim-1, LeftBoundary)        
-        facets_2 = mesh.locate_entities_boundary(domain, domain.topology.dim-1, RightBoundary)
-        dofs_1 = fem.locate_dofs_topological(W.sub(0).sub(0), domain.topology.dim-1, facets_1)
-        dofs_2 = fem.locate_dofs_topological(W.sub(0).sub(0), domain.topology.dim-1, facets_2)
-        bc1 = fem.dirichletbc(PETSc.ScalarType(0), dofs_1,W.sub(0).sub(0))
-        bc2 = fem.dirichletbc(PETSc.ScalarType(0), dofs_2,W.sub(0).sub(0))
+        facets_1 = locate_entities_boundary(domain, domain.topology.dim-1, LeftBoundary)        
+        facets_2 = locate_entities_boundary(domain, domain.topology.dim-1, RightBoundary)
+        dofs_1 = locate_dofs_topological(W.sub(0).sub(0), domain.topology.dim-1, facets_1)
+        dofs_2 = locate_dofs_topological(W.sub(0).sub(0), domain.topology.dim-1, facets_2)
+        bc1 = dirichletbc(PETSc.ScalarType(0), dofs_1,W.sub(0).sub(0))
+        bc2 = dirichletbc(PETSc.ScalarType(0), dofs_2,W.sub(0).sub(0))
         bcs = [bc1,bc2]
 
         # Define weak form
         F = weak_form(u,p,v,q,f,g_base,ds,nu)
 
         # Solve for (u,p)
-        problem = fem.petsc.NonlinearProblem(F, w, bcs=bcs)
-        solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
+        problem = NonlinearProblem(F, w, bcs=bcs)
+        solver = NewtonSolver(MPI.COMM_WORLD, problem)
 
-        log.set_log_level(log.LogLevel.WARNING)
+        set_log_level(LogLevel.WARNING)
         n, converged = solver.solve(w)
         assert(converged)
       

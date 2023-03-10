@@ -1,17 +1,18 @@
 #------------------------------------------------------------------------------------
 # This program solves a nonlinear Stokes problem describing sub-ice-shelf melt/freeze
 #------------------------------------------------------------------------------------
-from dolfinx import *
-from ufl import exp,sign
-from mpi4py import MPI
-import numpy as np
-from stokes import stokes_solve
-from mesh_routine import move_mesh,get_surfaces
 import os
-from params import L,H,nt,dt,Nx,Nz,z_max,t_r,t_f,rho_w,rho_i
+
 import matplotlib.pyplot as plt
-from scipy.special import erf
+import numpy as np
+from dolfinx.mesh import create_rectangle
+from mesh_routine import get_surfaces, move_mesh
+from mpi4py import MPI
+from params import H, L, Nx, Nz, dt, nt, t_f, t_r, z_max
 from scipy.signal import convolve
+from scipy.special import erf
+from stokes import stokes_solve
+from ufl import exp, sign
 
 results_dir = '../results'
 if os.path.isdir(results_dir)==False:
@@ -22,7 +23,7 @@ if os.path.isdir(results_dir+'/pngs')==False:
 # Load mesh
 p0 = [-L/2.0,0.0]
 p1 = [L/2.0,H]
-domain = mesh.create_rectangle(MPI.COMM_WORLD,[p0,p1], [Nx, Nz])
+domain = create_rectangle(MPI.COMM_WORLD,[p0,p1], [Nx, Nz])
 
 # Define arrays for saving surfaces
 h_i,s_i,x = get_surfaces(domain)
@@ -32,13 +33,16 @@ s = np.zeros((nx,nt))
 
 # Define forcing function
 def smb(x,z):
-    # Surface mass balance (upper and basal surfaces)
+    # Surface mass balance functions (at upper and basal surfaces)
+    # The sign(z-z_max) terms are used to ensure that the functionss
+    # only apply at the appropriate surfaces; 
+    # z_max is the maximum channel height allowed in the model (see params.py)
     m0 = 5                  # max basal melt rate (m/yr)
     stdev = 10*H/3          # standard deviation for Gaussian basal melt anomaly
     a0 = m0*np.sqrt(np.pi)*stdev*erf(L/(2*stdev)) / L
-    f = m0*(exp(-x**2/(stdev**2))/3.154e7)*0.5*(1-sign(z-z_max))
-    f += a0*0.5*(sign(z-z_max)+1)/3.154e7
-    return f
+    m = m0*(exp(-x**2/(stdev**2))/3.154e7)*0.5*(1-sign(z-z_max))
+    a = a0*0.5*(sign(z-z_max)+1)/3.154e7
+    return m+a
 
 # xdmf = io.XDMFFile(domain.comm, results_dir+"/stokes.xdmf", "w")
 # xdmf.write_mesh(domain)
@@ -68,21 +72,24 @@ for i in range(nt):
 
 # xdmf.close()
 
-# # Compute linear steady solution for validation
-# Green function for linearized problem
+# Compute linear steady solution for validation
 m0 = (5/3.154e7)*t_r/H # max basal melt rate (m/yr)
 stdev = 10/3           # standard deviation for Gaussian basal melt anomaly
 x0 = x/H
+# Green function for linearized problem
 G = (1./4)*np.pi*(1/np.cosh((np.pi*x0)/2.)**2) *(-3+np.pi*x0 *np.tanh((np.pi* x0)/2.0))
 M = m0*np.exp(-x0**2/(stdev**2))
 dx = x0[1]-x0[0]
 h0 = dx*convolve(G,M,mode='same')
 
-t_ = np.linspace(0,t_f,nt)
+t_ = np.linspace(0,t_f, nt)
+
+inds = np.arange(0,nt,int(nt/100))
 
 print('plotting...')
-for i in range(nt):
-    print('saving image '+str(i+1)+' out of '+str(nt))
+j=1
+for i in inds:
+    print('saving image '+str(j)+' out of '+str(inds.size))
     ex = 50     # vertical exaggeration factor
     plt.figure(figsize=(8,6))
     plt.title(r'$t\, / \, t_\mathrm{r}=$'+'{:.2f}'.format(t_[i]/t_r),fontsize=20)
@@ -98,8 +105,9 @@ for i in range(nt):
     plt.legend(fontsize=16,ncol=1,bbox_to_anchor=(0.8,-0.11))
     plt.ylim(-0.2,1.2)
     plt.xlim(-0.5*L/H,0.5*L/H)
-    plt.savefig(results_dir+'/pngs/fig_'+str(i),bbox_inches='tight')
+    plt.savefig(results_dir+'/pngs/fig_'+str(j),bbox_inches='tight')
     plt.close()
+    j+=1
 
 np.savetxt(results_dir+'/h',h)           # h = upper surface
 np.savetxt(results_dir+'/s',s)           # s = lower surface   

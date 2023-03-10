@@ -4,9 +4,9 @@
 # (2) mark the boundaries of the mesh, AND ...
 # (3) possibly create Dirichlet boundary conditions on one or both side walls of the domain.
 #-------------------------------------------------------------------------------
-from params import L,H,z_max
 import numpy as np
-from dolfinx import *
+from dolfinx.mesh import locate_entities, meshtags
+from params import L, z_max
 
 #-------------------------------------------------------------------------------
 # Define SubDomains for ice-water boundary, ice-bed boundary, inflow (x=0) and
@@ -43,12 +43,12 @@ def mark_boundary(domain):
     facet_indices, facet_markers = [], []
     fdim = domain.topology.dim - 1
     for (marker, locator) in boundaries:
-        facets = mesh.locate_entities(domain, fdim, locator)
+        facets = locate_entities(domain, fdim, locator)
         facet_indices.append(facets)
         facet_markers.append(np.full_like(facets, marker))
     facet_indices = np.hstack(facet_indices).astype(np.int32)
     facet_markers = np.hstack(facet_markers).astype(np.int32)
     sorted_facets = np.argsort(facet_indices)
-    facet_tag = mesh.meshtags(domain, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
+    facet_tag = meshtags(domain, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
     return facet_tag
